@@ -37,7 +37,7 @@ import {
 } from './src/types';
 
 const app = express();
-const PORT = 3000;
+const PORT = Number(process.env.PORT) || 3000;
 
 // Setup persistent uploads directory for evidence images
 const UPLOADS_BASE = path.join(process.cwd(), 'uploads');
