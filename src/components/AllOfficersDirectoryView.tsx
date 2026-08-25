@@ -38,7 +38,7 @@ import { Officer, CaseLog, DutyLog, AnomalyLog, OfficerRank, OfficerRole, Office
 import { RosterImageScannerModal } from './RosterImageScannerModal';
 import { OfficerExistenceCheckerModal } from './OfficerExistenceCheckerModal';
 
-export type TimeFilterPeriod = 'week' | 'month' | 'all';
+export type TimeFilterPeriod = 'week' | 'month' | 'custom' | 'all';
 
 // Helper to parse any case timestamp safely
 function parseCaseTimestamp(c: CaseLog): number {
@@ -70,6 +70,45 @@ function parseDutyTimestamp(d: DutyLog): number {
     if (!isNaN(t)) return t;
   }
   return 0;
+}
+
+function parseDutyEndTimestamp(d: DutyLog): number {
+  if (d.clock_out_timestamp) return d.clock_out_timestamp;
+  if (d.clock_out_iso) {
+    const t = new Date(d.clock_out_iso).getTime();
+    if (!isNaN(t)) return t;
+  }
+  if (d.clock_out) {
+    const t = new Date(d.clock_out.replace(' ', 'T')).getTime();
+    if (!isNaN(t)) return t;
+  }
+  const start = parseDutyTimestamp(d);
+  if (start > 0) {
+    if (d.duration_seconds !== undefined) return start + d.duration_seconds * 1000;
+    if (d.duration_minutes !== undefined) return start + d.duration_minutes * 60 * 1000;
+  }
+  return start;
+}
+
+function toLocalDateInputValue(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function startOfLocalDay(value: string): number | null {
+  if (!value) return null;
+  const date = new Date(`${value}T00:00:00`);
+  const time = date.getTime();
+  return Number.isNaN(time) ? null : time;
+}
+
+function endOfLocalDay(value: string): number | null {
+  if (!value) return null;
+  const date = new Date(`${value}T23:59:59.999`);
+  const time = date.getTime();
+  return Number.isNaN(time) ? null : time;
 }
 
 interface AllOfficersDirectoryViewProps {
@@ -114,6 +153,13 @@ export const AllOfficersDirectoryView: React.FC<AllOfficersDirectoryViewProps> =
 
   // Filters
   const [timeFilter, setTimeFilter] = useState<TimeFilterPeriod>('all');
+  const today = useMemo(() => toLocalDateInputValue(new Date()), []);
+  const defaultCustomStart = useMemo(() => {
+    const now = new Date();
+    return toLocalDateInputValue(new Date(now.getFullYear(), now.getMonth(), 1));
+  }, []);
+  const [customStartDate, setCustomStartDate] = useState(defaultCustomStart);
+  const [customEndDate, setCustomEndDate] = useState(today);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedRank, setSelectedRank] = useState<string>('All');
   const [selectedStatus, setSelectedStatus] = useState<string>('All');
@@ -137,7 +183,7 @@ export const AllOfficersDirectoryView: React.FC<AllOfficersDirectoryViewProps> =
   const [newPhone, setNewPhone] = useState('555-0199');
   const [newDiscordId, setNewDiscordId] = useState('');
 
-  // Time Ranges Calculation (Week | Month | All)
+  // Time Ranges Calculation (Week | Month | Custom | All)
   const timeRanges = useMemo(() => {
     const now = new Date();
     const currentEnd = now.getTime();
@@ -150,34 +196,47 @@ export const AllOfficersDirectoryView: React.FC<AllOfficersDirectoryViewProps> =
     // 2. MONTH Range: 1st of month 00:00:00 to Now
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0).getTime();
 
+    // 3. CUSTOM Range: selected start date 00:00:00 to selected end date 23:59:59.999
+    const rawCustomStart = startOfLocalDay(customStartDate);
+    const rawCustomEnd = endOfLocalDay(customEndDate);
+    const customStart = rawCustomStart ?? 0;
+    const customEnd = rawCustomEnd ?? currentEnd;
+    const customIsValid = rawCustomStart !== null && rawCustomEnd !== null && customStart <= customEnd;
+
     return {
-      week: { start: weekStart, end: currentEnd, label: 'สัปดาห์นี้' },
-      month: { start: monthStart, end: currentEnd, label: 'เดือนนี้' },
-      all: { start: 0, end: Infinity, label: 'ทั้งหมด' }
+      week: { start: weekStart, end: currentEnd, label: 'สัปดาห์นี้', isValid: true },
+      month: { start: monthStart, end: currentEnd, label: 'เดือนนี้', isValid: true },
+      custom: { start: customStart, end: customEnd, label: 'กำหนดช่วงเวลา', isValid: customIsValid },
+      all: { start: 0, end: Infinity, label: 'ทั้งหมด', isValid: true }
     };
-  }, []);
+  }, [customStartDate, customEndDate]);
 
   const activeRange = timeRanges[timeFilter];
+  const hasValidCustomRange = timeFilter !== 'custom' || activeRange.isValid;
 
   // Cases filtered by selected time range
   const scopedCases = useMemo(() => {
     if (timeFilter === 'all') return cases;
+    if (!hasValidCustomRange) return [];
     return cases.filter(c => {
       const ts = parseCaseTimestamp(c);
       if (ts === 0) return true; // fallback if untracked
       return ts >= activeRange.start && ts <= activeRange.end;
     });
-  }, [cases, timeFilter, activeRange]);
+  }, [cases, timeFilter, activeRange, hasValidCustomRange]);
 
-  // Duty logs filtered by selected time range
+  // Duty logs that overlap the selected time range.
+  // This keeps cross-day / cross-week duties from being dropped when only part of the duty falls inside the range.
   const scopedDutyLogs = useMemo(() => {
     if (timeFilter === 'all') return dutyLogs;
+    if (!hasValidCustomRange) return [];
     return dutyLogs.filter(d => {
-      const ts = parseDutyTimestamp(d);
-      if (ts === 0) return true;
-      return ts >= activeRange.start && ts <= activeRange.end;
+      const start = parseDutyTimestamp(d);
+      const end = parseDutyEndTimestamp(d);
+      if (start === 0) return false;
+      return start <= activeRange.end && end >= activeRange.start;
     });
-  }, [dutyLogs, timeFilter, activeRange]);
+  }, [dutyLogs, timeFilter, activeRange, hasValidCustomRange]);
 
   // Compute aggregated stats per officer based on scoped data
   const officerStatsMap = useMemo(() => {
@@ -193,9 +252,18 @@ export const AllOfficersDirectoryView: React.FC<AllOfficersDirectoryViewProps> =
           redCases: o.cases_red
         });
       } else {
-        // Compute from scoped logs
+        // Compute only the portion of each duty that overlaps the selected period.
         const offDuty = scopedDutyLogs.filter(d => d.officer_discord_id === o.discord_id);
-        const hours = offDuty.reduce((sum, d) => sum + (Number(d.duration_hours) || 0), 0);
+        const hours = offDuty.reduce((sum, d) => {
+          const dutyStart = parseDutyTimestamp(d);
+          const dutyEnd = parseDutyEndTimestamp(d);
+          if (dutyStart === 0 || dutyEnd < dutyStart) return sum;
+
+          const overlapStart = Math.max(dutyStart, activeRange.start);
+          const overlapEnd = Math.min(dutyEnd, activeRange.end);
+          const overlapMs = Math.max(0, overlapEnd - overlapStart);
+          return sum + overlapMs / (1000 * 60 * 60);
+        }, 0);
 
         const offCases = scopedCases.filter(c => 
           c.officer_discord_id === o.discord_id || 
@@ -217,7 +285,7 @@ export const AllOfficersDirectoryView: React.FC<AllOfficersDirectoryViewProps> =
     });
 
     return map;
-  }, [officers, scopedCases, scopedDutyLogs, timeFilter]);
+  }, [officers, scopedCases, scopedDutyLogs, timeFilter, activeRange]);
 
   // Overall Statistics calculation
   const totalCount = officers.length;
@@ -657,6 +725,16 @@ export const AllOfficersDirectoryView: React.FC<AllOfficersDirectoryViewProps> =
               รายเดือน
             </button>
             <button
+              onClick={() => setTimeFilter('custom')}
+              className={`px-3 py-1 rounded-lg font-bold transition-all cursor-pointer text-xs ${
+                timeFilter === 'custom'
+                  ? 'bg-amber-500 text-slate-950 shadow-md'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
+              }`}
+            >
+              กำหนดช่วงเวลา
+            </button>
+            <button
               onClick={() => setTimeFilter('all')}
               className={`px-3 py-1 rounded-lg font-bold transition-all cursor-pointer text-xs ${
                 timeFilter === 'all'
@@ -667,6 +745,48 @@ export const AllOfficersDirectoryView: React.FC<AllOfficersDirectoryViewProps> =
               ทั้งหมด
             </button>
           </div>
+
+          {timeFilter === 'custom' && (
+            <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto">
+              <div className="flex items-center gap-1.5 px-2.5 py-1 bg-slate-950 border border-slate-700 rounded-lg">
+                <Calendar className="w-3.5 h-3.5 text-amber-400" />
+                <span className="text-[10px] font-bold text-slate-400 whitespace-nowrap">วันที่เริ่มต้น</span>
+                <input
+                  type="date"
+                  value={customStartDate}
+                  max={customEndDate || undefined}
+                  onChange={(e) => setCustomStartDate(e.target.value)}
+                  className="bg-transparent text-slate-200 text-xs focus:outline-none [color-scheme:dark]"
+                />
+              </div>
+              <span className="text-slate-600 text-xs">ถึง</span>
+              <div className="flex items-center gap-1.5 px-2.5 py-1 bg-slate-950 border border-slate-700 rounded-lg">
+                <Calendar className="w-3.5 h-3.5 text-amber-400" />
+                <span className="text-[10px] font-bold text-slate-400 whitespace-nowrap">วันที่สิ้นสุด</span>
+                <input
+                  type="date"
+                  value={customEndDate}
+                  min={customStartDate || undefined}
+                  max={today}
+                  onChange={(e) => setCustomEndDate(e.target.value)}
+                  className="bg-transparent text-slate-200 text-xs focus:outline-none [color-scheme:dark]"
+                />
+              </div>
+              <button
+                onClick={() => {
+                  setCustomStartDate(defaultCustomStart);
+                  setCustomEndDate(today);
+                }}
+                className="px-2.5 py-1 rounded-lg border border-slate-700 text-[10px] font-bold text-slate-400 hover:text-white hover:border-slate-500 transition-colors"
+                title="ล้างช่วงเวลาที่เลือก"
+              >
+                ล้าง
+              </button>
+              {customStartDate && customEndDate && !activeRange.isValid && (
+                <span className="text-[10px] font-bold text-rose-400">กรุณาเลือกวันที่เริ่มต้นไม่เกินวันที่สิ้นสุด</span>
+              )}
+            </div>
+          )}
 
           {/* Select Dropdowns for Status, Rank, Sort */}
           <div className="flex flex-wrap items-center gap-2">
