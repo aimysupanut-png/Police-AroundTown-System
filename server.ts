@@ -2137,7 +2137,133 @@ app.delete('/api/case-edit-requests/:id', (req, res) => {
 app.get('/api/duty/logs', (req, res) => {
   res.json({ dutyLogs });
 });
+// ============================================================
+// AUTO CLOCK-OUT
+// ออกจากหน้าเว็บ / Refresh / ปิด Browser แล้วออกเวรอัตโนมัติ
+// ============================================================
+app.post('/api/duty/auto-clock-out', (req, res) => {
+  const authOfficer = getAuthenticatedOfficer(req);
 
+  if (!authOfficer) {
+    return res.status(401).json({
+      success: false,
+      error: 'ไม่พบ Session ผู้ใช้งาน'
+    });
+  }
+
+  const officer = officers.find(
+    o => o.discord_id === authOfficer.discord_id
+  );
+
+  if (!officer) {
+    return res.status(404).json({
+      success: false,
+      error: 'ไม่พบข้อมูลเจ้าหน้าที่'
+    });
+  }
+
+  const activeDuty = dutyLogs.find(
+    d =>
+      d.officer_discord_id === officer.discord_id &&
+      d.is_active
+  );
+
+  // ไม่ได้เข้าเวรอยู่แล้ว
+  if (!activeDuty) {
+    return res.json({
+      success: true,
+      action: 'ALREADY_CLOCKED_OUT'
+    });
+  }
+
+  const now = new Date();
+  const nowTimestamp = now.getTime();
+  const nowFormatted = now.toISOString()
+    .replace('T', ' ')
+    .slice(0, 19);
+  const nowISO = now.toISOString();
+
+  let startMs = activeDuty.clock_in_timestamp;
+
+  if (!startMs && activeDuty.clock_in_iso) {
+    startMs = new Date(activeDuty.clock_in_iso).getTime();
+  }
+
+  if (!startMs && activeDuty.clock_in) {
+    startMs = new Date(
+      activeDuty.clock_in.replace(' ', 'T')
+    ).getTime();
+
+    if (isNaN(startMs)) {
+      startMs = new Date(activeDuty.clock_in).getTime();
+    }
+  }
+
+  if (!startMs || isNaN(startMs)) {
+    startMs = nowTimestamp;
+  }
+
+  const elapsedMs = Math.max(
+    0,
+    nowTimestamp - startMs
+  );
+
+  const durationSec = Math.floor(
+    elapsedMs / 1000
+  );
+
+  const durationMin = Number(
+    (elapsedMs / (1000 * 60)).toFixed(2)
+  );
+
+  const durationHours = Number(
+    (elapsedMs / (1000 * 60 * 60)).toFixed(2)
+  );
+
+  // ปิดเวร
+  activeDuty.is_active = false;
+  activeDuty.clock_out = nowFormatted;
+  activeDuty.clock_out_iso = nowISO;
+  activeDuty.clock_out_timestamp = nowTimestamp;
+  activeDuty.duration_minutes = durationMin;
+  activeDuty.duration_seconds = durationSec;
+
+  // เปลี่ยนสถานะเจ้าหน้าที่
+  officer.status = 'Off Duty';
+
+  officer.duty_hours = Number(
+    (
+      (Number(officer.duty_hours) || 0) +
+      durationHours
+    ).toFixed(2)
+  );
+
+  officer.last_active = nowFormatted;
+
+  // Audit Log
+  auditLogs.unshift({
+    id: `AUDIT-${Date.now()}`,
+    admin_discord_id: officer.discord_id,
+    admin_name: officer.officer_name,
+    action_type: 'DUTY_AUTO_CLOCK_OUT',
+    action_details:
+      `${officer.officer_name} (#${officer.badge_number}) ` +
+      `ออกเวรอัตโนมัติ เนื่องจากออกจากเว็บไซต์ ` +
+      `ปฏิบัติหน้าที่ ${durationHours} ชั่วโมง`,
+    target_user: officer.officer_name,
+    timestamp: nowFormatted
+  });
+
+  return res.json({
+    success: true,
+    action: 'AUTO_CLOCK_OUT',
+    officer,
+    duty: activeDuty,
+    durationSec,
+    durationMin,
+    durationHours
+  });
+});
 app.post('/api/duty/clock-toggle', (req, res) => {
   const { officer_discord_id, notes, force_clock_out } = req.body;
   const officer = officers.find(o => o.discord_id === (officer_discord_id || currentUserId));

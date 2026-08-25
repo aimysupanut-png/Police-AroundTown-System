@@ -163,6 +163,55 @@ export default function App() {
     fetchAllData();
   }, [fetchAllData]);
 
+// ============================================================
+// AUTO CLOCK-OUT เมื่อออกจากเว็บไซต์
+// รองรับ:
+// - Refresh / F5
+// - ปิด Tab
+// - ปิด Browser
+// - เปลี่ยนไปเว็บไซต์อื่น
+// ============================================================
+useEffect(() => {
+  const handlePageExit = () => {
+    if (!currentUser) return;
+
+    const activeDuty = dutyLogs.find(
+      d =>
+        d.officer_discord_id === currentUser.discord_id &&
+        d.is_active
+    );
+
+    // ไม่ได้เข้าเวร ไม่ต้องทำอะไร
+    if (!activeDuty) return;
+
+    // ใช้ sendBeacon เพราะ fetch ปกติอาจถูกยกเลิก
+    // ตอน Browser กำลังปิดหน้า
+    const blob = new Blob(
+      [JSON.stringify({})],
+      {
+        type: 'application/json'
+      }
+    );
+
+    navigator.sendBeacon(
+      '/api/duty/auto-clock-out',
+      blob
+    );
+  };
+
+  window.addEventListener(
+    'pagehide',
+    handlePageExit
+  );
+
+  return () => {
+    window.removeEventListener(
+      'pagehide',
+      handlePageExit
+    );
+  };
+}, [currentUser, dutyLogs]);
+
   const handleLoginSuccess = useCallback((officer: Officer) => {
     setCurrentUser(officer);
     fetchAllData();
@@ -653,15 +702,42 @@ export default function App() {
 
   // Logout & Disconnect Discord
   const handleLogout = async () => {
-    try {
-      await fetch('/api/auth/logout', { method: 'POST' });
-      setCurrentUser(null);
-      showToast('ออกจากระบบเรียบร้อยแล้ว', 'info');
-    } catch (err) {
-      console.error(err);
-      setCurrentUser(null);
+  try {
+    // ออกเวรก่อน Logout
+    if (currentUser) {
+      const activeDuty = dutyLogs.find(
+        d =>
+          d.officer_discord_id === currentUser.discord_id &&
+          d.is_active
+      );
+
+      if (activeDuty) {
+        await fetch('/api/duty/auto-clock-out', {
+          method: 'POST',
+          credentials: 'include',
+          keepalive: true
+        });
+      }
     }
-  };
+
+    // จากนั้นค่อย Logout
+    await fetch('/api/auth/logout', {
+      method: 'POST',
+      credentials: 'include'
+    });
+
+    setCurrentUser(null);
+
+    showToast(
+      'ออกเวรและออกจากระบบเรียบร้อยแล้ว',
+      'info'
+    );
+
+  } catch (err) {
+    console.error(err);
+    setCurrentUser(null);
+  }
+};
 
   const unresolvedAnomaliesCount = anomalies.filter(a => a.status === 'Unresolved').length;
   const pendingBadgesCount = badgeRequests.filter(r => r.status === 'Pending').length;
