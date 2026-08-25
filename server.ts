@@ -2160,7 +2160,10 @@ function getDutyStartTimestamp(duty: DutyLog, fallback: number): number {
 function formatDutyDate(timestamp: number): { formatted: string; iso: string } {
   const date = new Date(timestamp);
   return {
-    formatted: date.toISOString().replace('T', ' ').slice(0, 19),
+    formatted: date.toLocaleString('sv-SE', {
+      timeZone: 'Asia/Bangkok',
+      hour12: false
+    }).replace(',', ''),
     iso: date.toISOString()
   };
 }
