@@ -1077,7 +1077,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 </div>
                 {isOnDuty && activeDuty && (
                   <p className="text-[10px] text-slate-400 font-mono mt-1">
-                    เวลาเข้าเวร: {activeDuty.clock_in}
+                    เวลาเข้าเวร: {activeDuty.clock_in_timestamp
+                      ? new Date(activeDuty.clock_in_timestamp).toLocaleString('sv-SE', { timeZone: 'Asia/Bangkok', hour12: false }).replace(',', '')
+                      : activeDuty.clock_in}
                   </p>
                 )}
               </div>
