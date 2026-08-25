@@ -1,0 +1,8 @@
+{
+  "name": "Remix Remix Remix Remix Remix Remix Around Town Police MDT System",
+  "description": "Full-Stack Police Around Town MDT System with Real-Time Dashboard Filtering (Week, Month, All), RBAC Permission Scoping, Case Logging, Badge Management, and Duty Validation.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

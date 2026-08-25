@@ -1,0 +1,228 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    background-color: #050811;
+    color: #f1f5f9;
+    font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Monospace numbers for finance & badges */
+  .font-mono {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* Tactical HUD & Sleek Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #080c18;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #1e293b;
+  border-radius: 6px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #334155;
+}
+
+/* Subtle Tactical Grid */
+.bg-tactical-grid {
+  background-size: 32px 32px;
+  background-image: 
+    linear-gradient(to right, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+}
+
+/* Bento Card Design System */
+.bento-card {
+  background-color: #0c1220;
+  border: 1px solid rgba(51, 65, 85, 0.4);
+  border-radius: 1rem;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 4px 20px -4px rgba(0, 0, 0, 0.5);
+}
+
+.bento-card:hover {
+  border-color: rgba(100, 116, 139, 0.55);
+}
+
+.bento-card-gold {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.07), #0c1220 70%);
+  border: 1px solid rgba(245, 158, 11, 0.32);
+}
+
+.bento-card-gold:hover {
+  border-color: rgba(245, 158, 11, 0.6);
+  box-shadow: 0 8px 30px -4px rgba(245, 158, 11, 0.15);
+}
+
+.bento-card-crimson {
+  background: linear-gradient(135deg, rgba(225, 29, 72, 0.07), #0c1220 70%);
+  border: 1px solid rgba(225, 29, 72, 0.32);
+}
+
+.bento-card-crimson:hover {
+  border-color: rgba(225, 29, 72, 0.6);
+  box-shadow: 0 8px 30px -4px rgba(225, 29, 72, 0.15);
+}
+
+.bento-card-blue {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.07), #0c1220 70%);
+  border: 1px solid rgba(59, 130, 246, 0.32);
+}
+
+.bento-card-blue:hover {
+  border-color: rgba(59, 130, 246, 0.6);
+  box-shadow: 0 8px 30px -4px rgba(59, 130, 246, 0.15);
+}
+
+.bento-card-emerald {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.07), #0c1220 70%);
+  border: 1px solid rgba(16, 185, 129, 0.32);
+}
+
+.bento-card-emerald:hover {
+  border-color: rgba(16, 185, 129, 0.6);
+  box-shadow: 0 8px 30px -4px rgba(16, 185, 129, 0.15);
+}
+
+/* Admin vs Officer Distinct Nav Zones */
+.nav-zone-admin {
+  background: linear-gradient(135deg, rgba(225, 29, 72, 0.14), rgba(15, 23, 42, 0.92) 70%, rgba(245, 158, 11, 0.1));
+  border: 1.5px solid rgba(225, 29, 72, 0.45);
+  box-shadow: 0 4px 25px -2px rgba(225, 29, 72, 0.22);
+}
+
+.nav-zone-officer {
+  background: rgba(12, 18, 32, 0.9);
+  border: 1px solid rgba(51, 65, 85, 0.6);
+}
+
+.admin-badge-glow {
+  box-shadow: 0 0 14px rgba(225, 29, 72, 0.5), inset 0 0 8px rgba(245, 158, 11, 0.3);
+}
+
+.glow-crimson {
+  box-shadow: 0 0 25px -4px rgba(225, 29, 72, 0.35);
+}
+
+.glow-gold {
+  box-shadow: 0 0 25px -4px rgba(245, 158, 11, 0.35);
+}
+
+.glow-blue {
+  box-shadow: 0 0 25px -4px rgba(59, 130, 246, 0.3);
+}
+
+.glow-emerald {
+  box-shadow: 0 0 25px -4px rgba(16, 185, 129, 0.35);
+}
+
+/* Subtle Shimmer & Pulse Animation Helpers */
+@keyframes subtle-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.85; transform: scale(0.98); }
+}
+
+.animate-subtle-pulse {
+  animation: subtle-pulse 3s infinite ease-in-out;
+}
+
+/* =========================================================================
+   POLICE AROUND TOWN - OFFICIAL ANIMATED LOGO KEYFRAMES & STYLING
+   ========================================================================= */
+
+/* 1. Continuous Smooth RGB Color Spectrum Cycle:
+   Pink (0deg) -> Purple (45deg) -> Blue (120deg) -> Cyan (180deg) -> Magenta (270deg) -> Red (330deg) -> Pink (360deg) */
+@keyframes pat-rgb-spectrum-kf {
+  0% {
+    filter: hue-rotate(0deg);
+  }
+  100% {
+    filter: hue-rotate(360deg);
+  }
+}
+
+.pat-color-cycle {
+  animation: pat-rgb-spectrum-kf 8s linear infinite;
+  will-change: filter;
+}
+
+/* 2. Gentle Futuristic Levitation / Floating Motion */
+@keyframes pat-floating-kf {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+.pat-floating {
+  animation: pat-floating-kf 4.5s ease-in-out infinite;
+}
+
+/* 3. Subtle Cybernetic Breathing / Neon Glow Pulse */
+@keyframes pat-breathing-kf {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.96;
+  }
+  50% {
+    transform: scale(1.025);
+    opacity: 1;
+  }
+}
+
+.pat-breathing {
+  animation: pat-breathing-kf 3.2s ease-in-out infinite alternate;
+}
+
+/* 4. Light Sweep Reflective Sheen inside SVG Badge */
+@keyframes pat-light-sweep-svg-kf {
+  0% {
+    transform: translateX(-300px) skewX(-20deg);
+    opacity: 0;
+  }
+  15% {
+    opacity: 0.5;
+  }
+  30% {
+    transform: translateX(700px) skewX(-20deg);
+    opacity: 0;
+  }
+  100% {
+    transform: translateX(700px) skewX(-20deg);
+    opacity: 0;
+  }
+}
+
+.pat-light-sweep-svg {
+  animation: pat-light-sweep-svg-kf 6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  will-change: transform, opacity;
+}
+
+/* 5. Accessibility Support: prefers-reduced-motion */
+@media (prefers-reduced-motion: reduce) {
+  .pat-color-cycle,
+  .pat-floating,
+  .pat-breathing,
+  .pat-light-sweep-svg {
+    animation: none !important;
+    transform: none !important;
+    will-change: auto !important;
+  }
+}
+
+
+
