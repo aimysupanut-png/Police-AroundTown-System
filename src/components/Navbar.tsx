@@ -247,7 +247,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               {/* Quick Clock-in / Clock-out Button (Admin Duty Compact Button: เข้าเวร / ออกเวร) */}
               <button
                 id="duty-toggle-btn"
-                onClick={onToggleDuty}
+                onClick={() => onToggleDuty()}
                 title={isOnDuty ? "คลิกเพื่อลงชื่อออกเวร" : "คลิกเพื่อลงชื่อเข้าเวร"}
                 className={`whitespace-nowrap flex-shrink-0 inline-flex items-center space-x-1.5 px-3 py-1.5 h-7 rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer select-none ${
                   isOnDuty
