@@ -473,20 +473,41 @@ app.get('/api/auth/me', (req, res) => {
     activeUser = officers.find(o => o.discord_id === currentUserId) || null;
   }
 
-  res.json({
-    authenticated: !!activeUser,
-    user: activeUser,
-    available_users: officers.map(o => ({
-      discord_id: o.discord_id,
-      officer_name: o.officer_name,
-      badge_number: o.badge_number,
-      rank: o.rank,
-      role: o.role,
-      department: o.department,
-      avatar: o.avatar,
-      status: o.status
-    }))
-  });
+  const effectiveUser = activeUser
+  ? {
+      ...activeUser,
+      role:
+        activeUser.role === 'Leader' ||
+        activeUser.role === 'Admin' ||
+        isDiscordAdmin(activeUser.discord_id)
+          ? (
+              activeUser.role === 'Leader'
+                ? 'Leader'
+                : 'Admin'
+            )
+          : activeUser.role
+    }
+  : null;
+
+res.json({
+  authenticated: !!effectiveUser,
+  user: effectiveUser,
+  available_users: officers.map(o => ({
+    discord_id: o.discord_id,
+    officer_name: o.officer_name,
+    badge_number: o.badge_number,
+    rank: o.rank,
+    role:
+      o.role === 'Leader' ||
+      o.role === 'Admin' ||
+      isDiscordAdmin(o.discord_id)
+        ? (o.role === 'Leader' ? 'Leader' : 'Admin')
+        : o.role,
+    department: o.department,
+    avatar: o.avatar,
+    status: o.status
+  }))
+});
 });
 
 // Logout and clear HttpOnly Session Cookie
@@ -1205,18 +1226,33 @@ app.delete('/api/officers/:id', (req, res) => {
 // Helper to resolve current officer from session or fallback
 function getAuthenticatedOfficer(req: express.Request): Officer | null {
   const sessionId = req.cookies?.atpd_session;
+
   if (sessionId) {
     const session = sessionStore.get(sessionId);
+
     if (session && session.expiresAt > Date.now()) {
-      const off = officers.find(o => o.discord_id === session.discordId);
-      if (off) return off;
+      const officer = officers.find(
+        o => o.discord_id === session.discordId
+      );
+
+      if (officer) {
+        return officer;
+      }
     }
   }
+
+  // Development fallback
   if (currentUserId) {
-    const off = officers.find(o => o.discord_id === currentUserId);
-    if (off) return off;
+    const officer = officers.find(
+      o => o.discord_id === currentUserId
+    );
+
+    if (officer) {
+      return officer;
+    }
   }
-  return officers[0] || null;
+
+  return null;
 }
 
 // -------------------------------------------------------------
@@ -2386,10 +2422,21 @@ app.post('/api/badges/approve', (req, res) => {
   const request = badgeRequests.find(r => r.id === request_id);
   if (!request) return res.status(404).json({ error: "Request not found" });
 
-  const admin = officers.find(o => o.discord_id === currentUserId);
-  if (!admin || (admin.role !== 'Leader' && admin.role !== 'Admin')) {
-    return res.status(403).json({ error: "เฉพาะระดับ Leader หรือ Admin เท่านั้นที่มีสิทธิ์อนุมัติ" });
-  }
+  const admin = getAuthenticatedOfficer(req);
+
+const isAdmin =
+  admin &&
+  (
+    admin.role === 'Leader' ||
+    admin.role === 'Admin' ||
+    isDiscordAdmin(admin.discord_id)
+  );
+
+if (!admin || !isAdmin) {
+  return res.status(403).json({
+    error: "เฉพาะระดับ Leader หรือ Admin เท่านั้นที่มีสิทธิ์อนุมัติ"
+  });
+}
 
   const targetOfficer = officers.find(o => o.discord_id === request.officer_discord_id);
   if (!targetOfficer) return res.status(404).json({ error: "Target officer not found" });
@@ -2422,15 +2469,21 @@ app.post('/api/badges/reject', (req, res) => {
   const request = badgeRequests.find(r => r.id === request_id);
   if (!request) return res.status(404).json({ error: "Request not found" });
 
-  const admin = officers.find(o => o.discord_id === currentUserId);
-  if (!admin || (admin.role !== 'Leader' && admin.role !== 'Admin')) {
-    return res.status(403).json({ error: "เฉพาะระดับ Leader หรือ Admin เท่านั้นที่มีสิทธิ์ปฏิเสธ" });
-  }
+  const admin = getAuthenticatedOfficer(req);
 
-  request.status = 'Rejected';
-  request.reviewed_at = new Date().toISOString().replace('T', ' ').slice(0, 16);
-  request.reviewed_by = `${admin.officer_name} (${admin.rank})`;
-  request.review_notes = review_notes || "ไม่อนุมัติคำขอเปลี่ยนหมายเลข";
+const isAdmin =
+  admin &&
+  (
+    admin.role === 'Leader' ||
+    admin.role === 'Admin' ||
+    isDiscordAdmin(admin.discord_id)
+  );
+
+if (!admin || !isAdmin) {
+  return res.status(403).json({
+    error: "เฉพาะระดับ Leader หรือ Admin เท่านั้นที่มีสิทธิ์ปฏิเสธ"
+  });
+}
 
   auditLogs.unshift({
     id: `AUDIT-${Date.now()}`,

@@ -260,7 +260,7 @@ export const BadgeManagementView: React.FC<BadgeManagementViewProps> = ({
                 title="เพิ่มจำนวนเลขวิทยุ เช่น เพิ่มอีก 40 เลข รวมเป็น 80 เลข (เฉพาะ Admin)"
               >
                 <PlusCircle className="w-4 h-4 text-blue-200" />
-                <span>เพิ่มเลขวิทยุ (+40)</span>
+                <span>เพิ่มเลขวิทยุ</span>
               </button>
 
               {/* Check Officer Existence Button (Admin / Leader only) */}
