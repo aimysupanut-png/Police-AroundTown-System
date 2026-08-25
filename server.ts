@@ -2138,132 +2138,157 @@ app.get('/api/duty/logs', (req, res) => {
   res.json({ dutyLogs });
 });
 // ============================================================
-// AUTO CLOCK-OUT
-// ออกจากหน้าเว็บ / Refresh / ปิด Browser แล้วออกเวรอัตโนมัติ
+// DUTY HEARTBEAT + AUTO CLOCK-OUT
 // ============================================================
-app.post('/api/duty/auto-clock-out', (req, res) => {
-  const authOfficer = getAuthenticatedOfficer(req);
+const DUTY_HEARTBEAT_TIMEOUT_MS = Number(process.env.DUTY_HEARTBEAT_TIMEOUT_MS) || (5 * 60 * 1000);
+const DUTY_HEARTBEAT_CHECK_INTERVAL_MS = Number(process.env.DUTY_HEARTBEAT_CHECK_INTERVAL_MS) || 60 * 1000;
 
-  if (!authOfficer) {
-    return res.status(401).json({
-      success: false,
-      error: 'ไม่พบ Session ผู้ใช้งาน'
-    });
+function getDutyStartTimestamp(duty: DutyLog, fallback: number): number {
+  if (duty.clock_in_timestamp && !isNaN(duty.clock_in_timestamp)) return duty.clock_in_timestamp;
+  if (duty.clock_in_iso) {
+    const parsed = new Date(duty.clock_in_iso).getTime();
+    if (!isNaN(parsed)) return parsed;
   }
-
-  const officer = officers.find(
-    o => o.discord_id === authOfficer.discord_id
-  );
-
-  if (!officer) {
-    return res.status(404).json({
-      success: false,
-      error: 'ไม่พบข้อมูลเจ้าหน้าที่'
-    });
+  if (duty.clock_in) {
+    let parsed = new Date(duty.clock_in.replace(' ', 'T')).getTime();
+    if (isNaN(parsed)) parsed = new Date(duty.clock_in).getTime();
+    if (!isNaN(parsed)) return parsed;
   }
+  return fallback;
+}
 
-  const activeDuty = dutyLogs.find(
-    d =>
-      d.officer_discord_id === officer.discord_id &&
-      d.is_active
-  );
+function formatDutyDate(timestamp: number): { formatted: string; iso: string } {
+  const date = new Date(timestamp);
+  return {
+    formatted: date.toISOString().replace('T', ' ').slice(0, 19),
+    iso: date.toISOString()
+  };
+}
 
-  // ไม่ได้เข้าเวรอยู่แล้ว
-  if (!activeDuty) {
-    return res.json({
-      success: true,
-      action: 'ALREADY_CLOCKED_OUT'
-    });
-  }
+function closeDutyLog(
+  officer: Officer,
+  activeDuty: DutyLog,
+  closeTimestamp: number,
+  options: {
+    auto?: boolean;
+    reason?: 'PAGE_EXIT' | 'HEARTBEAT_TIMEOUT' | 'SESSION_TIMEOUT';
+  } = {}
+) {
+  // ป้องกันการนับเวลาซ้ำ หากมี request เข้ามาพร้อมกัน
+  if (!activeDuty.is_active) return null;
 
-  const now = new Date();
-  const nowTimestamp = now.getTime();
-  const nowFormatted = now.toISOString()
-    .replace('T', ' ')
-    .slice(0, 19);
-  const nowISO = now.toISOString();
+  const startMs = getDutyStartTimestamp(activeDuty, closeTimestamp);
+  const finalTimestamp = Math.max(startMs, closeTimestamp);
+  const elapsedMs = Math.max(0, finalTimestamp - startMs);
+  const durationSec = Math.floor(elapsedMs / 1000);
+  const durationMin = Number((elapsedMs / (1000 * 60)).toFixed(2));
+  const durationHours = Number((elapsedMs / (1000 * 60 * 60)).toFixed(2));
+  const { formatted, iso } = formatDutyDate(finalTimestamp);
 
-  let startMs = activeDuty.clock_in_timestamp;
-
-  if (!startMs && activeDuty.clock_in_iso) {
-    startMs = new Date(activeDuty.clock_in_iso).getTime();
-  }
-
-  if (!startMs && activeDuty.clock_in) {
-    startMs = new Date(
-      activeDuty.clock_in.replace(' ', 'T')
-    ).getTime();
-
-    if (isNaN(startMs)) {
-      startMs = new Date(activeDuty.clock_in).getTime();
-    }
-  }
-
-  if (!startMs || isNaN(startMs)) {
-    startMs = nowTimestamp;
-  }
-
-  const elapsedMs = Math.max(
-    0,
-    nowTimestamp - startMs
-  );
-
-  const durationSec = Math.floor(
-    elapsedMs / 1000
-  );
-
-  const durationMin = Number(
-    (elapsedMs / (1000 * 60)).toFixed(2)
-  );
-
-  const durationHours = Number(
-    (elapsedMs / (1000 * 60 * 60)).toFixed(2)
-  );
-
-  // ปิดเวร
   activeDuty.is_active = false;
-  activeDuty.clock_out = nowFormatted;
-  activeDuty.clock_out_iso = nowISO;
-  activeDuty.clock_out_timestamp = nowTimestamp;
+  activeDuty.clock_out = formatted;
+  activeDuty.clock_out_iso = iso;
+  activeDuty.clock_out_timestamp = finalTimestamp;
   activeDuty.duration_minutes = durationMin;
   activeDuty.duration_seconds = durationSec;
+  activeDuty.auto_clocked_out = Boolean(options.auto);
+  activeDuty.auto_clock_out_reason = options.auto ? options.reason : undefined;
 
-  // เปลี่ยนสถานะเจ้าหน้าที่
   officer.status = 'Off Duty';
+  officer.duty_hours = Number(((Number(officer.duty_hours) || 0) + durationHours).toFixed(2));
+  officer.last_active = formatted;
 
-  officer.duty_hours = Number(
-    (
-      (Number(officer.duty_hours) || 0) +
-      durationHours
-    ).toFixed(2)
+  return { durationSec, durationMin, durationHours, closeTimestamp: finalTimestamp };
+}
+
+// Heartbeat: หน้าเว็บที่ยังเปิดอยู่จะส่งทุก 60 วินาที
+app.post('/api/duty/heartbeat', (req, res) => {
+  const authOfficer = getAuthenticatedOfficer(req);
+  if (!authOfficer) return res.status(401).json({ success: false, error: 'ไม่พบ Session ผู้ใช้งาน' });
+
+  const activeDuty = dutyLogs.find(
+    d => d.officer_discord_id === authOfficer.discord_id && d.is_active
   );
 
-  officer.last_active = nowFormatted;
+  if (!activeDuty) return res.json({ success: true, active: false });
 
-  // Audit Log
+  const nowTimestamp = Date.now();
+  activeDuty.last_heartbeat_timestamp = nowTimestamp;
+  activeDuty.last_heartbeat = formatDutyDate(nowTimestamp).formatted;
+
+  const officer = officers.find(o => o.discord_id === authOfficer.discord_id);
+  if (officer) officer.last_active = activeDuty.last_heartbeat;
+
+  return res.json({ success: true, active: true, lastHeartbeat: nowTimestamp });
+});
+
+// Auto clock-out จาก pagehide / logout
+app.post('/api/duty/auto-clock-out', (req, res) => {
+  const authOfficer = getAuthenticatedOfficer(req);
+  if (!authOfficer) return res.status(401).json({ success: false, error: 'ไม่พบ Session ผู้ใช้งาน' });
+
+  const officer = officers.find(o => o.discord_id === authOfficer.discord_id);
+  if (!officer) return res.status(404).json({ success: false, error: 'ไม่พบข้อมูลเจ้าหน้าที่' });
+
+  const activeDuty = dutyLogs.find(
+    d => d.officer_discord_id === officer.discord_id && d.is_active
+  );
+  if (!activeDuty) return res.json({ success: true, action: 'ALREADY_CLOCKED_OUT' });
+
+  const result = closeDutyLog(officer, activeDuty, Date.now(), {
+    auto: true,
+    reason: 'PAGE_EXIT'
+  });
+
+  if (!result) return res.json({ success: true, action: 'ALREADY_CLOCKED_OUT' });
+
   auditLogs.unshift({
     id: `AUDIT-${Date.now()}`,
     admin_discord_id: officer.discord_id,
     admin_name: officer.officer_name,
-    action_type: 'DUTY_AUTO_CLOCK_OUT',
-    action_details:
-      `${officer.officer_name} (#${officer.badge_number}) ` +
-      `ออกเวรอัตโนมัติ เนื่องจากออกจากเว็บไซต์ ` +
-      `ปฏิบัติหน้าที่ ${durationHours} ชั่วโมง`,
+    action_type: 'DUTY_OVERRIDE',
+    action_details: `${officer.officer_name} (#${officer.badge_number}) ออกเวรอัตโนมัติ เนื่องจากออกจากเว็บไซต์ ปฏิบัติหน้าที่ ${result.durationHours} ชั่วโมง`,
     target_user: officer.officer_name,
-    timestamp: nowFormatted
+    timestamp: formatDutyDate(result.closeTimestamp).formatted
   });
 
-  return res.json({
-    success: true,
-    action: 'AUTO_CLOCK_OUT',
-    officer,
-    duty: activeDuty,
-    durationSec,
-    durationMin,
-    durationHours
-  });
+  return res.json({ success: true, action: 'AUTO_CLOCK_OUT', officer, duty: activeDuty, ...result });
 });
+
+// ตรวจจับกรณี Browser/คอม/เน็ตหลุดจน pagehide ไม่ถูกส่ง
+setInterval(() => {
+  const nowTimestamp = Date.now();
+
+  for (const activeDuty of dutyLogs.filter(d => d.is_active)) {
+    const officer = officers.find(o => o.discord_id === activeDuty.officer_discord_id);
+    if (!officer) continue;
+
+    const startMs = getDutyStartTimestamp(activeDuty, nowTimestamp);
+    const lastHeartbeat = activeDuty.last_heartbeat_timestamp || startMs;
+
+    if (nowTimestamp - lastHeartbeat < DUTY_HEARTBEAT_TIMEOUT_MS) continue;
+
+    // ปิดที่เวลายืนยันล่าสุด ไม่ใช่เวลาที่ Server มาตรวจเจอ
+    // เพื่อไม่ให้นับชั่วโมงเกินจริงระหว่างผู้ใช้หายไป
+    const result = closeDutyLog(officer, activeDuty, lastHeartbeat, {
+      auto: true,
+      reason: 'HEARTBEAT_TIMEOUT'
+    });
+
+    if (!result) continue;
+
+    auditLogs.unshift({
+      id: `AUDIT-${Date.now()}-${officer.discord_id}`,
+      admin_discord_id: 'SYSTEM',
+      admin_name: 'System',
+      action_type: 'DUTY_OVERRIDE',
+      action_details: `${officer.officer_name} (#${officer.badge_number}) ถูกออกเวรอัตโนมัติ เนื่องจากไม่มีสัญญาณ Heartbeat เกิน ${Math.floor(DUTY_HEARTBEAT_TIMEOUT_MS / 60000)} นาที ระบบบันทึกเวลาออกตาม Heartbeat ครั้งล่าสุด`,
+      target_user: officer.officer_name,
+      timestamp: formatDutyDate(lastHeartbeat).formatted
+    });
+  }
+}, DUTY_HEARTBEAT_CHECK_INTERVAL_MS);
+
 app.post('/api/duty/clock-toggle', (req, res) => {
   const { officer_discord_id, notes, force_clock_out } = req.body;
   const officer = officers.find(o => o.discord_id === (officer_discord_id || currentUserId));
@@ -2374,6 +2399,8 @@ app.post('/api/duty/clock-toggle', (req, res) => {
       clock_in: nowFormatted,
       clock_in_iso: nowISO,
       clock_in_timestamp: nowTimestamp,
+      last_heartbeat_timestamp: nowTimestamp,
+      last_heartbeat: nowFormatted,
       duration_minutes: 0,
       duration_seconds: 0,
       is_active: true,

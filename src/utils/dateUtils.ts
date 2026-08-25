@@ -137,19 +137,51 @@ export function computeOfficerStats(
     };
   }
 
-  // Filter strictly within Sunday 00:00 to Saturday 23:59
+  // Cases นับตามเวลาที่สร้างเคส (timestamp) ซึ่งอยู่ในช่วงสัปดาห์โดยตรง
   const weeklyCases = officerCases.filter(c => isDateInWeeklyRange(c.timestamp, weeklyRange));
-  const weeklyDuties = officerDuties.filter(d => isDateInWeeklyRange(d.clock_in, weeklyRange));
+
+  // Duty นับเฉพาะส่วนของเวลาที่ซ้อนทับกับสัปดาห์นั้นจริง ๆ
+  // จึงรองรับกรณีเข้าเวรสัปดาห์ก่อนและออกเวรสัปดาห์นี้ได้ถูกต้อง
+  const getDutyStartMs = (d: DutyLog): number | null => {
+    if (d.clock_in_timestamp && !isNaN(d.clock_in_timestamp)) return d.clock_in_timestamp;
+    const raw = d.clock_in_iso || d.clock_in;
+    if (!raw) return null;
+    const parsed = new Date(typeof raw === 'string' ? raw.replace(' ', 'T') : raw).getTime();
+    return isNaN(parsed) ? null : parsed;
+  };
+
+  const getDutyEndMs = (d: DutyLog): number | null => {
+    if (d.clock_out_timestamp && !isNaN(d.clock_out_timestamp)) return d.clock_out_timestamp;
+    const raw = d.clock_out_iso || d.clock_out;
+    if (raw) {
+      const parsed = new Date(raw.replace(' ', 'T')).getTime();
+      if (!isNaN(parsed)) return parsed;
+    }
+    // Duty ที่ยัง active ให้นับถึงเวลาปัจจุบัน แต่ไม่เกินขอบเขตสัปดาห์
+    return d.is_active ? Date.now() : null;
+  };
+
+  const weeklyDutySegments = officerDuties.map(d => {
+    const startMs = getDutyStartMs(d);
+    const endMs = getDutyEndMs(d);
+    if (!startMs || !endMs || endMs <= startMs) return { duty: d, overlapMs: 0 };
+
+    const overlapStart = Math.max(startMs, weeklyRange.startDate.getTime());
+    const overlapEnd = Math.min(endMs, weeklyRange.endDate.getTime() + 1);
+    return { duty: d, overlapMs: Math.max(0, overlapEnd - overlapStart) };
+  }).filter(item => item.overlapMs > 0);
+
+  const weeklyDuties = weeklyDutySegments.map(item => item.duty);
 
   const normalCount = weeklyCases.filter(c => c.case_type === 'Normal').length;
   const take2Count = weeklyCases.filter(c => c.case_type === 'Take2').length;
   const redCount = weeklyCases.filter(c => c.case_type === 'Red').length;
   const totalCasesCount = weeklyCases.length;
 
-  const weeklyDutyMins = weeklyDuties.reduce((sum, d) => {
-    if (d.duration_seconds !== undefined) return sum + (d.duration_seconds / 60);
-    return sum + (d.duration_minutes || 0);
-  }, 0);
+  const weeklyDutyMins = weeklyDutySegments.reduce(
+    (sum, item) => sum + (item.overlapMs / (1000 * 60)),
+    0
+  );
   const dutyHours = Number((weeklyDutyMins / 60).toFixed(2));
   const totalFines = weeklyCases.reduce((sum, c) => sum + (c.fine_amount || 0), 0);
 

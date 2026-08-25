@@ -164,54 +164,54 @@ export default function App() {
   }, [fetchAllData]);
 
 // ============================================================
-// AUTO CLOCK-OUT เมื่อออกจากเว็บไซต์
-// รองรับ:
-// - Refresh / F5
-// - ปิด Tab
-// - ปิด Browser
-// - เปลี่ยนไปเว็บไซต์อื่น
+// DUTY HEARTBEAT + AUTO CLOCK-OUT
+// 1) ส่ง Heartbeat ทุก 60 วินาที
+// 2) หากปิด/รีเฟรชหน้า ใช้ sendBeacon ปิดเวรทันที
+// 3) หาก Browser/เน็ตล่ม Server จะปิดเวรจาก Heartbeat ครั้งสุดท้าย
 // ============================================================
 useEffect(() => {
-  const handlePageExit = () => {
-    if (!currentUser) return;
+  if (!currentUser) return;
 
+  const sendHeartbeat = async () => {
+    try {
+      await fetch('/api/duty/heartbeat', {
+        method: 'POST',
+        credentials: 'include',
+        keepalive: true
+      });
+    } catch (err) {
+      // ไม่แสดง Toast เพราะจะลองใหม่ในรอบถัดไป
+      console.warn('Duty heartbeat failed', err);
+    }
+  };
+
+  // ยืนยันสถานะทันทีเมื่อ Login/โหลดข้อมูลเสร็จ
+  sendHeartbeat();
+  const interval = window.setInterval(sendHeartbeat, 60 * 1000);
+
+  const handlePageExit = () => {
     const activeDuty = dutyLogs.find(
       d =>
         d.officer_discord_id === currentUser.discord_id &&
         d.is_active
     );
 
-    // ไม่ได้เข้าเวร ไม่ต้องทำอะไร
     if (!activeDuty) return;
 
-    // ใช้ sendBeacon เพราะ fetch ปกติอาจถูกยกเลิก
-    // ตอน Browser กำลังปิดหน้า
-    const blob = new Blob(
-      [JSON.stringify({})],
-      {
-        type: 'application/json'
-      }
-    );
+    const blob = new Blob([JSON.stringify({})], {
+      type: 'application/json'
+    });
 
-    navigator.sendBeacon(
-      '/api/duty/auto-clock-out',
-      blob
-    );
+    navigator.sendBeacon('/api/duty/auto-clock-out', blob);
   };
 
-  window.addEventListener(
-    'pagehide',
-    handlePageExit
-  );
+  window.addEventListener('pagehide', handlePageExit);
 
   return () => {
-    window.removeEventListener(
-      'pagehide',
-      handlePageExit
-    );
+    window.clearInterval(interval);
+    window.removeEventListener('pagehide', handlePageExit);
   };
 }, [currentUser, dutyLogs]);
-
   const handleLoginSuccess = useCallback((officer: Officer) => {
     setCurrentUser(officer);
     fetchAllData();

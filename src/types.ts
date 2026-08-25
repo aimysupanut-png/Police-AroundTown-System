@@ -171,6 +171,12 @@ export interface DutyLog {
   clock_out?: string;
   clock_out_iso?: string;
   clock_out_timestamp?: number;
+  /** เวลาที่หน้าเว็บยืนยันว่าผู้ใช้ยังออนไลน์อยู่ล่าสุด */
+  last_heartbeat_timestamp?: number;
+  last_heartbeat?: string;
+  /** true เมื่อระบบปิดเวรอัตโนมัติ */
+  auto_clocked_out?: boolean;
+  auto_clock_out_reason?: 'PAGE_EXIT' | 'HEARTBEAT_TIMEOUT' | 'SESSION_TIMEOUT';
   duration_minutes: number;
   duration_seconds?: number;
   is_active: boolean;
