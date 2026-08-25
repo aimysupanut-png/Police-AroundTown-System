@@ -152,6 +152,19 @@ function sortAndRenumberOfficersAZ(): void {
   });
 }
 
+
+const DB_FILE = path.join(process.cwd(), 'data-store.json');
+function saveDatabase(){
+ fs.writeFileSync(DB_FILE, JSON.stringify({officers,caseLogs,dutyLogs,auditLogs,notifications,badgeRequests,caseEditRequests,totalBadgeSlots},null,2),'utf8');
+}
+function loadDatabase(){
+ if(fs.existsSync(DB_FILE)){
+  const d=JSON.parse(fs.readFileSync(DB_FILE,'utf8'));
+  officers=d.officers||officers; caseLogs=d.caseLogs||caseLogs; dutyLogs=d.dutyLogs||dutyLogs;
+  auditLogs=d.auditLogs||auditLogs; notifications=d.notifications||notifications; badgeRequests=d.badgeRequests||badgeRequests;
+  caseEditRequests=d.caseEditRequests||caseEditRequests; totalBadgeSlots=d.totalBadgeSlots||totalBadgeSlots;
+ }
+}
 // In-Memory Database Store for Around Town Police MDT (All initial records cleared)
 let officers: Officer[] = [];
 
@@ -1199,6 +1212,7 @@ app.put('/api/officers/:id', (req, res) => {
     timestamp: new Date().toISOString().replace('T', ' ').slice(0, 16)
   });
 
+  saveDatabase();
   res.json({ success: true, officer: officers[index] });
 });
 
@@ -1220,6 +1234,7 @@ app.delete('/api/officers/:id', (req, res) => {
     timestamp: new Date().toISOString().replace('T', ' ').slice(0, 16)
   });
 
+  saveDatabase();
   res.json({ success: true, message: `ลบข้อมูลเจ้าหน้าที่ ${removedOfficer.officer_name} เรียบร้อยแล้ว`, officers });
 });
 
@@ -3504,3 +3519,5 @@ async function startServer() {
 }
 
 startServer();
+
+loadDatabase();
