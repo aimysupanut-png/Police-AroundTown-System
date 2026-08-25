@@ -152,19 +152,6 @@ function sortAndRenumberOfficersAZ(): void {
   });
 }
 
-
-const DB_FILE = path.join(process.cwd(), 'data-store.json');
-function saveDatabase(){
- fs.writeFileSync(DB_FILE, JSON.stringify({officers,caseLogs,dutyLogs,auditLogs,notifications,badgeRequests,caseEditRequests,totalBadgeSlots},null,2),'utf8');
-}
-function loadDatabase(){
- if(fs.existsSync(DB_FILE)){
-  const d=JSON.parse(fs.readFileSync(DB_FILE,'utf8'));
-  officers=d.officers||officers; caseLogs=d.caseLogs||caseLogs; dutyLogs=d.dutyLogs||dutyLogs;
-  auditLogs=d.auditLogs||auditLogs; notifications=d.notifications||notifications; badgeRequests=d.badgeRequests||badgeRequests;
-  caseEditRequests=d.caseEditRequests||caseEditRequests; totalBadgeSlots=d.totalBadgeSlots||totalBadgeSlots;
- }
-}
 // In-Memory Database Store for Around Town Police MDT (All initial records cleared)
 let officers: Officer[] = [];
 
@@ -182,6 +169,18 @@ let dutyLogs: DutyLog[] = [];
 let badgeRequests: BadgeRequest[] = [];
 
 let totalBadgeSlots = 40; // Default capacity of radio code / badge slots (can be expanded by Admin)
+
+
+const DATA_FILE = path.join(process.cwd(), "data-store.json");
+function saveDatabase(){
+ fs.writeFileSync(DATA_FILE, JSON.stringify({officers,caseLogs,notifications,caseEditRequests,dutyLogs,badgeRequests,totalBadgeSlots,auditLogs},null,2));
+}
+function loadDatabase(){
+ if(!fs.existsSync(DATA_FILE)) return;
+ try{ const d=JSON.parse(fs.readFileSync(DATA_FILE,'utf8'));
+ officers=d.officers||officers; caseLogs=d.caseLogs||caseLogs; notifications=d.notifications||notifications; caseEditRequests=d.caseEditRequests||caseEditRequests; dutyLogs=d.dutyLogs||dutyLogs; badgeRequests=d.badgeRequests||badgeRequests; totalBadgeSlots=d.totalBadgeSlots||totalBadgeSlots; auditLogs=d.auditLogs||auditLogs; }catch(e){console.error(e)}
+}
+loadDatabase();
 
 function getEffectiveTotalBadgeSlots(): number {
   let highestBadge = 0;
@@ -1201,6 +1200,7 @@ app.put('/api/officers/:id', (req, res) => {
   if (index === -1) return res.status(404).json({ error: "Officer not found" });
 
   officers[index] = { ...officers[index], ...req.body };
+  saveDatabase();
 
   auditLogs.unshift({
     id: `AUDIT-${Date.now()}`,
@@ -1212,7 +1212,6 @@ app.put('/api/officers/:id', (req, res) => {
     timestamp: new Date().toISOString().replace('T', ' ').slice(0, 16)
   });
 
-  saveDatabase();
   res.json({ success: true, officer: officers[index] });
 });
 
@@ -1223,6 +1222,7 @@ app.delete('/api/officers/:id', (req, res) => {
 
   const removedOfficer = officers[index];
   officers.splice(index, 1);
+  saveDatabase();
 
   auditLogs.unshift({
     id: `AUDIT-${Date.now()}`,
@@ -1234,7 +1234,6 @@ app.delete('/api/officers/:id', (req, res) => {
     timestamp: new Date().toISOString().replace('T', ' ').slice(0, 16)
   });
 
-  saveDatabase();
   res.json({ success: true, message: `ลบข้อมูลเจ้าหน้าที่ ${removedOfficer.officer_name} เรียบร้อยแล้ว`, officers });
 });
 
@@ -3519,5 +3518,3 @@ async function startServer() {
 }
 
 startServer();
-
-loadDatabase();

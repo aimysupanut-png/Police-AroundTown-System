@@ -46,8 +46,8 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<Officer | null>(null);
   const [availableUsers, setAvailableUsers] = useState<Officer[]>([]);
   const [activeTab, setActiveTab] = useState<string>('dashboard');
-  const [isInitialized, setIsInitialized] = useState(false);
-  const [hasLoadedInitialIntro, setHasLoadedInitialIntro] = useState(true);
+  const [isInitialized, setIsInitialized] = useState(true);
+  const [hasLoadedInitialIntro, setHasLoadedInitialIntro] = useState(false);
 
   // App Data States
   const [officers, setOfficers] = useState<Officer[]>([]);
