@@ -3283,7 +3283,6 @@ async function startServer() {
 
   app.listen(PORT, '0.0.0.0', () => {
   console.log(`[Around Town Police MDT] Server running on port ${PORT}`);
-});
     const isIdSet = Boolean((process.env.DISCORD_CLIENT_ID || runtimeDiscordClientId || '').trim());
     const isSecretSet = Boolean((process.env.DISCORD_CLIENT_SECRET || runtimeDiscordClientSecret || '').trim());
     const effectiveRedirectUri = (process.env.DISCORD_REDIRECT_URI || '').trim() || `http://localhost:${PORT}/auth/discord/callback`;
