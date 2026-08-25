@@ -2120,8 +2120,8 @@ app.post('/api/duty/clock-toggle', (req, res) => {
       return res.status(409).json({
         success: false,
         require_confirmation: true,
-        active_cases_count: activeCases.length,
-        active_cases: activeCases.map(c => ({
+         activeCasesCount: activeCases.length,
+         activeCases: activeCases.map(c => ({
           id: c.id,
           case_number: c.case_number,
           title: c.title,

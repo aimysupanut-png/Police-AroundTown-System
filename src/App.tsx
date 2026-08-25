@@ -719,7 +719,7 @@ export default function App() {
         setActiveTab={setActiveTab}
         onSwitchUser={handleSwitchUser}
         onLogout={handleLogout}
-        onToggleDuty={handleToggleDuty}
+        onToggleDuty={() => handleToggleDuty(false)}
         anomaliesCount={unresolvedAnomaliesCount}
         pendingBadgesCount={pendingBadgesCount}
         notificationsCount={notifications.filter(n => !n.read).length}
@@ -893,7 +893,7 @@ export default function App() {
                 onNavigateToDiscordSync={() => setActiveTab('discord-sync')}
                 onNavigateToCreateCase={() => setActiveTab('cases-create')}
                 onNavigateToCases={() => setActiveTab('cases')}
-                onToggleDuty={handleToggleDuty}
+                onToggleDuty={() => handleToggleDuty(false)}
                 onSelectCase={(c) => setSelectedCaseDetail(c)}
               />
             )}
